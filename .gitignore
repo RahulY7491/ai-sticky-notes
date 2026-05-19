@@ -1,0 +1,63 @@
+# ──────────────────────────────────────────────────────────────
+# OS / Editor
+# ──────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IntelliJ / Android Studio / Rider
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# VS Code (uncomment if you don't want to share launch.json etc.)
+# .vscode/
+
+# ──────────────────────────────────────────────────────────────
+# Secrets — never commit
+# ──────────────────────────────────────────────────────────────
+# Local .NET dev config holds the real Gemini key on each developer's
+# machine. Use appsettings.json (committed, with empty/placeholder values)
+# as the template, and User Secrets / env vars / appsettings.Development.json
+# (ignored) for real values.
+**/appsettings.Development.json
+**/appsettings.*.Local.json
+*.env
+.env.*
+!.env.example
+
+# ──────────────────────────────────────────────────────────────
+# .NET (backend/)
+# ──────────────────────────────────────────────────────────────
+**/bin/
+**/obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.pdb
+*.cache
+
+# ──────────────────────────────────────────────────────────────
+# Flutter / Dart (app/) — top-level safety net; app/.gitignore is more
+# detailed, but this catches anything accidentally generated at the root.
+# ──────────────────────────────────────────────────────────────
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.pub-cache/
+**/.pub/
+**/build/
+**/doc/api/
+**/ios/Flutter/.last_build_id
+app.*.symbols
+app.*.map.json
+
+# ──────────────────────────────────────────────────────────────
+# Build logs
+# ──────────────────────────────────────────────────────────────
+*.log
+build_appbundle.log

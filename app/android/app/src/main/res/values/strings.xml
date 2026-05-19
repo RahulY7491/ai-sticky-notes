@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_notes_count">%d notes</string>
+    <string name="widget_no_notes">Tap to add notes</string>
+    <string name="widget_pinned">📌 Pinned note</string>
+</resources>
