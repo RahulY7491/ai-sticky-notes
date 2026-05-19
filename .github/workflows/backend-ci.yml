@@ -1,0 +1,56 @@
+# ──────────────────────────────────────────────────────────────────────
+# .NET CI — builds the ASP.NET Core backend.
+# Triggers only on changes under backend/.
+# ──────────────────────────────────────────────────────────────────────
+name: backend-ci
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & test
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend/AIStickyNotes.API
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The version matches the <TargetFramework>net8.0</TargetFramework>
+      # in AIStickyNotes.API.csproj.
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      # `dotnet restore` downloads NuGet packages — equivalent to
+      # `flutter pub get`.
+      - name: Restore dependencies
+        run: dotnet restore
+
+      # `--no-restore` skips repeating work we just did. `Release` builds
+      # apply optimisations; `Debug` is what `dotnet run` uses locally.
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      # When you add a *.Tests project (e.g. `AIStickyNotes.API.Tests`),
+      # uncomment the step below to run it in CI. `--no-build` reuses the
+      # binaries we just produced.
+      #
+      # - name: Test
+      #   working-directory: backend
+      #   run: dotnet test --no-build --configuration Release --verbosity normal

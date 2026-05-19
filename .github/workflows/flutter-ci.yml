@@ -1,0 +1,59 @@
+# ──────────────────────────────────────────────────────────────────────
+# Flutter CI — runs analyzer + widget tests on the Flutter app.
+# Triggers only when files under app/ change, so backend-only commits
+# don't waste minutes here.
+# ──────────────────────────────────────────────────────────────────────
+name: flutter-ci
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - ".github/workflows/flutter-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/**"
+      - ".github/workflows/flutter-ci.yml"
+  workflow_dispatch: # lets you re-run manually from the Actions tab
+
+jobs:
+  test:
+    name: Analyze & test
+    runs-on: ubuntu-latest
+
+    # `defaults.run.working-directory` saves us from writing `cd app/`
+    # in every step that calls flutter.
+    defaults:
+      run:
+        working-directory: app
+
+    steps:
+      # 1. Pull the repository into the runner's filesystem.
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2. Install Flutter. The exact version is pinned so a future
+      #    Flutter release can't silently break the build.
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.41.4"
+          channel: stable
+          cache: true # caches the SDK across runs to save ~1 min
+
+      # 3. Download Dart packages declared in pubspec.yaml.
+      - name: Install dependencies
+        run: flutter pub get
+
+      # 4. Static analysis. We don't fail on info-level lints because the
+      #    project still has a few legacy `withOpacity` deprecation warnings;
+      #    `--no-fatal-infos` keeps those advisory while still failing on
+      #    real errors and warnings.
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      # 5. Run the unit + widget tests we wrote earlier.
+      - name: Test
+        run: flutter test --reporter expanded
