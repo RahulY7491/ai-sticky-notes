@@ -1,0 +1,11 @@
+# If true, contributors can't open a blank issue — they must pick a
+# template. This dramatically reduces low-quality drive-by reports.
+blank_issues_enabled: false
+
+contact_links:
+  - name: Questions & discussions
+    url: https://github.com/RahulY7491/ai-sticky-notes/discussions
+    about: For general questions, "how do I…" and design discussions. Please don't open issues for these.
+  - name: Report a security vulnerability
+    url: https://github.com/RahulY7491/ai-sticky-notes/security/advisories/new
+    about: Use GitHub's private vulnerability reporting — do not file a public issue.

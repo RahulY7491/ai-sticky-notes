@@ -1,0 +1,66 @@
+name: Feature request
+description: Suggest a new capability or improvement
+title: "feat: <short summary>"
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea! Filling this in carefully helps us scope
+        the work and avoid building the wrong thing.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the underlying user need, not the solution.
+      placeholder: "When I dictate a long note I can't see how much time I have left."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How would you like it to work?
+      placeholder: "Show a circular progress ring around the mic icon during recording."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered
+      description: Other approaches you thought about and why you didn't pick them.
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which part of the project?
+      multiple: true
+      options:
+        - Flutter app (app/)
+        - Backend API (backend/)
+        - CI/CD workflows (.github/)
+        - Docs
+    validations:
+      required: true
+
+  - type: dropdown
+    id: willing-to-contribute
+    attributes:
+      label: Would you be willing to send a PR?
+      options:
+        - "Yes, I'd like to work on this"
+        - "Yes, but I'd need guidance"
+        - "No, just suggesting"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched [existing issues](https://github.com/RahulY7491/ai-sticky-notes/issues?q=is%3Aissue) and this isn't a duplicate.
+          required: true
