@@ -1,0 +1,231 @@
+# ──────────────────────────────────────────────────────────────────────
+# Android production release pipeline.
+#
+# Two ways to trigger:
+#   1. Push a semver tag:   `git tag v1.0.5 && git push origin v1.0.5`
+#      → builds signed AAB + APK, attaches them to a GitHub Release.
+#
+#   2. Manual dispatch from the Actions tab:
+#      → same as above, plus optionally uploads the AAB to a Play Store
+#        track (internal / alpha / beta / production) with a chosen
+#        rollout percentage.
+#
+# Required GitHub Action secrets (Settings -> Secrets and variables -> Actions):
+#   ANDROID_KEYSTORE_BASE64        — your .jks file, run through `base64 -w0`
+#   ANDROID_KEYSTORE_PASSWORD      — storePassword from key.properties
+#   ANDROID_KEY_PASSWORD           — keyPassword from key.properties
+#   ANDROID_KEY_ALIAS              — keyAlias from key.properties
+#   GEMINI_API_KEY                 — Google AI Studio API key
+#   PLAY_STORE_SERVICE_ACCOUNT_JSON — JSON for the Play Developer API
+#                                    service account (only needed for the
+#                                    Play upload step; see docs/PLAY_STORE_SETUP.md)
+# ──────────────────────────────────────────────────────────────────────
+name: android-release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      track:
+        description: "Play Store track (skip = no upload, just build artifacts)"
+        type: choice
+        default: "skip"
+        options:
+          - skip
+          - internal
+          - alpha
+          - beta
+          - production
+      rollout:
+        description: "Staged-rollout fraction (production only, e.g. 0.05 = 5%)"
+        type: string
+        default: "0.10"
+
+# Only one release at a time — protects against a developer
+# rapid-firing two tags and racing the Play Store API.
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, sign & release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # `GITHUB_TOKEN` needs write to create GitHub Releases.
+    permissions:
+      contents: write
+
+    defaults:
+      run:
+        working-directory: app
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so the release-notes generator can diff tags
+
+      # ─── Toolchain ──────────────────────────────────────────────
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.41.4"
+          channel: stable
+          cache: true
+
+      # ─── Version sanity check ───────────────────────────────────
+      # If this run was triggered by a `v1.2.3` tag, verify that
+      # `pubspec.yaml` actually says `1.2.3+N`. Catches "forgot to bump
+      # the version" silently shipping the same code twice.
+      - name: Verify pubspec.yaml matches tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          tag="${GITHUB_REF#refs/tags/v}"
+          pubspec_version=$(grep -m1 '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//')
+          echo "Tag version:     $tag"
+          echo "pubspec version: $pubspec_version"
+          if [ "$tag" != "$pubspec_version" ]; then
+            echo "::error::Tag ($tag) does not match pubspec.yaml version ($pubspec_version)."
+            exit 1
+          fi
+
+      # ─── Secrets → on-disk signing config ───────────────────────
+      # GitHub stores secrets as opaque strings, but Gradle needs an
+      # actual .jks file on disk and a key.properties next to it. We
+      # decode the base64'd keystore into the path that build.gradle.kts
+      # already expects (`android/<storeFile>`), and write a fresh
+      # key.properties from the individual secrets so nothing sensitive
+      # is ever logged.
+      - name: Decode upload keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 secret is empty. See docs/PLAY_STORE_SETUP.md."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > android/upload-keystore.jks
+          ls -la android/upload-keystore.jks
+
+      - name: Write key.properties
+        env:
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          cat > android/key.properties <<EOF
+          storePassword=$STORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=upload-keystore.jks
+          EOF
+
+      # ─── Pre-flight ─────────────────────────────────────────────
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Static analysis
+        run: flutter analyze --no-fatal-infos
+
+      - name: Unit + widget tests
+        run: flutter test --reporter expanded
+
+      # ─── Build artifacts ────────────────────────────────────────
+      # `--obfuscate` + `--split-debug-info` strip Dart symbol names
+      # from the shipped binary (size + IP protection) and dump the
+      # debug info into a separate folder. We upload that folder so
+      # crashes from real users can be de-obfuscated later via
+      # `flutter symbolize`.
+      - name: Build AAB (App Bundle for Play Store)
+        run: |
+          flutter build appbundle --release \
+            --dart-define=GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}" \
+            --obfuscate \
+            --split-debug-info=build/symbols
+
+      - name: Build universal APK (for sideloading / GitHub Release)
+        run: |
+          flutter build apk --release \
+            --dart-define=GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}" \
+            --obfuscate \
+            --split-debug-info=build/symbols
+
+      # ─── Upload artifacts to the workflow run ───────────────────
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-sticky-notes-release-aab
+          path: app/build/app/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-sticky-notes-release-apk
+          path: app/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload debug symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-sticky-notes-debug-symbols
+          path: app/build/symbols
+          if-no-files-found: error
+          retention-days: 90
+
+      # ─── GitHub Release (only on tag push) ──────────────────────
+      # `generate_release_notes: true` asks GitHub to auto-build the
+      # "What's changed" section by diffing against the previous tag,
+      # which is why we ran `actions/checkout` with fetch-depth: 0.
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          files: |
+            app/build/app/outputs/bundle/release/app-release.aab
+            app/build/app/outputs/flutter-apk/app-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ─── Play Store upload (only when manually dispatched) ─────
+      # Skipped when `track == skip` so we can do a dry run that just
+      # builds the artifacts without publishing.
+      - name: Publish to Play Store
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.track != 'skip'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
+          packageName: com.aistickynotes.app
+          releaseFiles: app/build/app/outputs/bundle/release/app-release.aab
+          track: ${{ github.event.inputs.track }}
+          # `inProgress` enables staged rollout; `completed` ships to 100%.
+          status: ${{ github.event.inputs.track == 'production' && 'inProgress' || 'completed' }}
+          userFraction: ${{ github.event.inputs.track == 'production' && github.event.inputs.rollout || '' }}
+          mappingFile: app/build/app/outputs/mapping/release/mapping.txt
+          debugSymbols: app/build/symbols
+          changesNotSentForReview: false
+
+      # ─── Cleanup ────────────────────────────────────────────────
+      # Belt-and-braces — the runner's filesystem is destroyed at end
+      # of job anyway, but explicit cleanup makes the intent obvious.
+      - name: Wipe signing config
+        if: always()
+        run: |
+          rm -f android/upload-keystore.jks
+          rm -f android/key.properties

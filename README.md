@@ -92,28 +92,42 @@ GitHub Actions runs three workflows defined in `.github/workflows/`:
 
 | Workflow | Triggers on | What it does |
 |---|---|---|
-| `flutter-ci.yml` | push / PR touching `app/**` | `flutter analyze` + `flutter test` |
-| `backend-ci.yml` | push / PR touching `backend/**` | `dotnet build` (Release) |
-| `android-build.yml` | tag push `v*`, or manual | Builds the release APK and uploads it as an artifact |
+| `flutter-ci.yml`    | push / PR touching `app/**`     | `flutter analyze` + `flutter test`                                                  |
+| `backend-ci.yml`    | push / PR touching `backend/**` | `dotnet build` (Release)                                                            |
+| `android-release.yml` | tag push `v*`, or manual dispatch | Builds the **signed AAB + universal APK + obfuscation symbols**, creates a GitHub Release, optionally uploads to a Play Store track with staged rollout. |
 
 ### Required GitHub secrets
 
 Configure these under **Settings → Secrets and variables → Actions** in
-the GitHub repo:
+the GitHub repo. The full how-to (including how to base64-encode the
+keystore and create a Play Developer API service account) is in
+[`docs/PLAY_STORE_SETUP.md`](docs/PLAY_STORE_SETUP.md).
 
-| Secret | Used by | Purpose |
-|---|---|---|
-| `GEMINI_API_KEY` | `android-build.yml` | Compiled into the APK via `--dart-define` so the Flutter `AiService` can reach the Gemini API. |
+| Secret                            | Used by                  | Purpose                                                                |
+|-----------------------------------|--------------------------|------------------------------------------------------------------------|
+| `GEMINI_API_KEY`                  | `android-release.yml`    | Compiled into the AAB/APK via `--dart-define` so `AiService` can reach Gemini. |
+| `ANDROID_KEYSTORE_BASE64`         | `android-release.yml`    | Base64-encoded upload keystore (`.jks`).                               |
+| `ANDROID_KEYSTORE_PASSWORD`       | `android-release.yml`    | Keystore password.                                                     |
+| `ANDROID_KEY_PASSWORD`            | `android-release.yml`    | Key password (often the same as keystore password).                    |
+| `ANDROID_KEY_ALIAS`               | `android-release.yml`    | Key alias inside the keystore.                                         |
+| `PLAY_STORE_SERVICE_ACCOUNT_JSON` | `android-release.yml`    | (Optional) Service-account JSON for automated Play Store uploads.       |
 
 ### Cutting a release
 
+See [`docs/RELEASING.md`](docs/RELEASING.md) for the full runbook,
+including the staged-rollout playbook and rollback procedures. The
+short version:
+
 ```bash
-git tag v1.0.5
-git push origin v1.0.5
+# Bump version in app/pubspec.yaml
+git add app/pubspec.yaml
+git commit -m "chore(release): v1.0.6"
+git tag v1.0.6
+git push origin main v1.0.6
 ```
 
-The `android-build` workflow will pick the tag up, build the release APK,
-and attach it as a downloadable artifact on the workflow run's summary.
+The workflow builds the artifacts, attaches them to a GitHub Release,
+and (if manually dispatched with a track) uploads to the Play Store.
 
 ## Contributing
 
