@@ -94,6 +94,29 @@ flutter {
     source = "../.."
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// Supply-chain pinning.
+//
+// Some Flutter plugins (notably home_widget) pull in androidx.glance
+// transitively without pinning a major version. Google released
+// `androidx.glance:glance-appwidget:1.3.0-alpha01` on 19 May 2026 which
+// requires compileSdk 37 and Android Gradle Plugin 9.1.0+ — neither of
+// which the Flutter 3.41 stack supports yet.
+//
+// Forcing the stable 1.1.1 line also removes the alpha
+// `androidx.compose.remote:remote-creation-android` transitive that
+// ships with glance 1.3.0-alpha01.
+//
+// Remove these `force(...)` lines once Flutter ships an AGP-9-compatible
+// toolchain and we're ready to bump compileSdk to 37+.
+// ──────────────────────────────────────────────────────────────────────
+configurations.configureEach {
+    resolutionStrategy {
+        force("androidx.glance:glance:1.1.1")
+        force("androidx.glance:glance-appwidget:1.1.1")
+    }
+}
+
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
